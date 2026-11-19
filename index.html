@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>地震マップビューア</title>
+  <link rel="stylesheet" href="leaflet.css" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
+    
+    /* フィルターパネル（右上） */
+    .filter-panel {
+      position: absolute; top: 10px; right: 10px; z-index: 1000;
+      background: rgba(255, 255, 255, 0.95); padding: 8px 12px;
+      border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      font-size: 13px; width: 210px;
+    }
+    .panel-header {
+      display: flex; justify-content: space-between; align-items: center;
+      cursor: pointer; user-select: none;
+    }
+    .panel-header h4 { margin: 0; font-size: 14px; }
+    .toggle-btn {
+      background: #eee; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 11px; padding: 2px 6px; cursor: pointer; color: #333;
+    }
+    .filter-body { margin-top: 8px; border-top: 1px solid #ddd; padding-top: 8px; }
+    .filter-row { margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .filter-row select { padding: 4px 6px; font-size: 12px; border-radius: 4px; border: 1px solid #ccc; }
+    .btn-primary {
+      width: 100%; background: #0066cc; color: white; border: none; border-radius: 4px;
+      cursor: pointer; font-weight: bold; padding: 7px; font-size: 12px;
+    }
+    .btn-primary:hover { background: #0052a3; }
+    .btn-secondary {
+      width: 100%; background: #28a745; color: white; border: none; border-radius: 4px;
+      cursor: pointer; font-weight: bold; padding: 7px; font-size: 12px;
+    }
+    .btn-secondary:hover { background: #218838; }
+    .btn-secondary:disabled { background: #999; cursor: not-allowed; }
+    #countDisplay { font-size: 11px; color: #444; text-align: right; line-height: 1.4; }
+      <div id="countDisplay">読み込み中...</div>
+      <div id="wsStatus" style="font-size: 11px; color: #28a745; text-align: right; margin-top: 4px; font-weight: bold;">● リアルタイム待機中</div>
+
+
+    /* 凡例パネル（右下） */
+    .legend-panel {
+      position: absolute; bottom: 24px; right: 10px; z-index: 1000;
+      background: rgba(255, 255, 255, 0.95); padding: 8px 12px;
+      border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      font-size: 11px; line-height: 1.4; max-width: calc(100vw - 40px);
+    }
+    .legend-body { margin-top: 6px; border-top: 1px solid #ddd; padding-top: 6px; display: flex; flex-direction: column; gap: 8px; }
+    .legend-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .legend-label { font-weight: bold; color: #333; min-width: 56px; }
+    .legend-item { display: flex; align-items: center; gap: 3px; }
+    .legend-color { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #333; display: inline-block; }
+
+    /* マグニチュード大きさ見本 */
+    .mag-list { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .mag-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #333; }
+    .mag-circle { border-radius: 50%; border: 1.5px solid #444; background: rgba(0, 102, 204, 0.2); display: inline-block; }
+
+    /* ポップアップ内のデザイン */
+    .info-box { max-width: 260px; max-height: 220px; overflow-y: auto; font-size: 13px; line-height: 1.5; }
+    .city-list { margin-top: 6px; padding-top: 6px; border-top: 1px solid #ddd; font-size: 12px; color: #333; }
+    .hidden { display: none !important; }
+    /* 新着地震の波紋（光る）アニメーション */
+    @keyframes pulseRing {
+      0% { transform: scale(0.5); opacity: 1; }
+      100% { transform: scale(3.5); opacity: 0; }
+    }
+    .quake-pulse {
+      width: 30px; height: 30px; margin-left: -15px; margin-top: -15px;
+      border-radius: 50%; background: rgba(255, 40, 0, 0.7);
+      border: 2px solid #ffffff;
+      animation: pulseRing 1.5s ease-out infinite;
+      pointer-events: none;
+    }
+
+    /* 画面上部に出る新着通知バナー */
+    .toast-banner {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      z-index: 2000; background: #d9534f; color: white;
+      padding: 12px 20px; border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+      font-size: 14px; font-weight: bold; text-align: center;
+      display: none; cursor: pointer; max-width: 90vw;
+    }
+
+    /* 凡例パネルを地図の手前・右下に強制表示 */
+    .legend-panel {
+      position: fixed !important;
+      bottom: 24px !important;
+      right: 10px !important;
+      z-index: 1000 !important;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 8px 12px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      font-size: 11px;
+      line-height: 1.4;
+      max-width: calc(100vw - 24px);
+    }
+    .legend-body { margin-top: 6px; border-top: 1px solid #ddd; padding-top: 6px; display: flex; flex-direction: column; gap: 8px; }
+    .legend-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .legend-label { font-weight: bold; color: #333; min-width: 56px; }
+    .legend-item { display: flex; align-items: center; gap: 3px; }
+    .legend-color { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #333; display: inline-block; }
+    .mag-list { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .mag-item { display: flex; align-items: center; gap: 3px; font-size: 11px; color: #333; }
+    .mag-circle { border-radius: 50%; border: 1.5px solid #444; background: rgba(0, 102, 204, 0.2); display: inline-block; }
+
+    /* デュアルレンジスライダー（下限・上限の2つまみ）用デザイン */
+    .dual-slider-wrap {
+      position: relative;
+      width: 100%;
+      height: 24px;
+      display: flex;
+      align-items: center;
+    }
+    .dual-slider-track {
+      position: absolute;
+      width: 100%;
+      height: 5px;
+      background: #ddd;
+      border-radius: 3px;
+      z-index: 1;
+    }
+    .dual-slider-range {
+      position: absolute;
+      height: 5px;
+      background: #0066cc;
+      border-radius: 3px;
+      z-index: 2;
+    }
+    .dual-slider-wrap input[type="range"] {
+      position: absolute;
+      width: 100%;
+      margin: 0;
+      background: none;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+      z-index: 3;
+    }
+    .dual-slider-wrap input[type="range"]::-webkit-slider-thumb {
+      pointer-events: auto;
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #0066cc;
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+      cursor: pointer;
+    }
+    .dual-slider-wrap input[type="range"]::-moz-range-thumb {
+      pointer-events: auto;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #0066cc;
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+      cursor: pointer;
+    }
+    /* 左側の地震一覧リストパネル */
+    .list-panel {
+      position: fixed;
+      top: 10px;
+      left: 50px; /* Leafletのズームボタン(+-)と被らない位置 */
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 8px 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      font-size: 12px;
+      width: 260px;
+      max-width: calc(100vw - 70px);
+    }
+    .quake-list-scroll {
+      max-height: 55vh;
+      overflow-y: auto;
+      margin-top: 6px;
+      border-top: 1px solid #ddd;
+    }
+    .quake-list-item {
+      padding: 6px 4px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      line-height: 1.3;
+    }
+    .quake-list-item:hover {
+      background: #f0f7ff;
+    }
+    .list-badge {
+      display: inline-block;
+      min-width: 34px;
+      text-align: center;
+      padding: 2px 4px;
+      border-radius: 4px;
+      color: #fff;
+      font-weight: bold;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+
+  </style>
+</head>
+<body>
+<body>
+  <!-- 新着地震の通知バナー -->
+  <div id="toastBanner" class="toast-banner"></div>
+  <div id="map"></div>
+  <!-- 左側の地震一覧リストパネル（開閉可能） -->
+  <div class="list-panel">
+            <div class="panel-header" id="toggleListHeader">
+
+
+      <h4 style="margin: 0; font-size: 13px;">地震リスト（クリックで移動）</h4>
+      <button class="toggle-btn" id="toggleListBtn">▲ 閉じる</button>
+    </div>
+    <div id="listBody">
+      <div style="margin-top: 6px;">
+        <button class="btn-primary" id="listReloadBtn" style="padding: 5px; font-size: 11px;">最新地震情報を取得・更新</button>
+      </div>
+      <div id="quakeListContainer" class="quake-list-scroll"></div>
+    </div>
+  </div>
+
+  <!-- フィルター操作パネル（開閉可能） -->
+  <div class="filter-panel">
+    <div class="panel-header" id="toggleFilterHeader">
+      <h4>表示フィルター</h4>
+      <button class="toggle-btn" id="toggleFilterBtn">▲ 閉じる</button>
+    </div>
+    <div class="filter-body" id="filterBody">
+                       <!-- 1. ベース地図と統合地形図の重ね合わせ -->
+      <div class="filter-row" style="flex-direction: column; align-items: stretch; gap: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+          <label for="mapLayerSelect">ベース地図:</label>
+          <select id="mapLayerSelect" style="flex: 1;">
+            <option value="pale">淡色地図（見やすい）</option>
+            <option value="std">標準地図</option>
+          </select>
+        </div>
+
+        <div style="font-size: 11px; background: #f7f9fc; padding: 5px 6px; border-radius: 4px; border: 1px solid #e1e6ed;">
+          <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; margin-bottom: 4px; font-weight: bold; color: #333;">
+            <input type="checkbox" id="overlayHybridTerrain"> 地形図を重ねる（陸:陰影 / 海:標高）
+          </label>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <span style="font-size: 10px; color: #555;">濃さ:</span>
+            <input type="range" id="overlayOpacity" min="0.1" max="1.0" step="0.1" value="0.6" style="flex: 1; cursor: pointer;">
+            <span id="opacityLabel" style="font-size: 10px; width: 28px; text-align: right;">60%</span>
+          </div>
+        </div>
+      </div>
+
+
+
+
+      <!-- 2. マーカー色分け基準の切り替え -->
+      <div class="filter-row">
+        <label for="colorModeSelect">色分け:</label>
+        <select id="colorModeSelect" style="flex: 1;">
+          <option value="intensity">最大震度で色分け</option>
+          <option value="depth">震源の深さで色分け</option>
+        </select>
+      </div>
+
+      <!-- 3. 日時範囲（カレンダー＆時刻）フィルター -->
+      <div class="filter-row" style="flex-direction: column; align-items: stretch; gap: 3px; border-top: 1px solid #eee; padding-top: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label style="font-size: 12px;">日時指定:</label>
+          <button id="resetDateBtn" style="font-size: 10px; padding: 1px 6px; cursor: pointer; background: #eee; border: 1px solid #ccc; border-radius: 3px;">全期間に戻す</button>
+        </div>
+        <input type="datetime-local" id="startTimeInput" style="font-size: 11px; padding: 2px;">
+        <div style="text-align: center; font-size: 10px; line-height: 1;">〜</div>
+        <input type="datetime-local" id="endTimeInput" style="font-size: 11px; padding: 2px;">
+      </div>
+
+    <div class="filter-row" style="flex-direction: column; align-items: stretch; gap: 4px;">
+        <label>最大震度（範囲）:</label>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <select id="minInt" style="flex: 1;">
+            <option value="0">下限なし</option>
+            <option value="10">震度1</option>
+            <option value="20">震度2</option>
+            <option value="30">震度3</option>
+            <option value="40">震度4</option>
+            <option value="45">震度5弱</option>
+            <option value="50">震度5強</option>
+            <option value="55">震度6弱</option>
+            <option value="60">震度6強</option>
+            <option value="70">震度7</option>
+          </select>
+          <span style="font-size: 11px;">〜</span>
+          <select id="maxInt" style="flex: 1;">
+            <option value="99">上限なし</option>
+            <option value="10">震度1</option>
+            <option value="20">震度2</option>
+            <option value="30">震度3</option>
+            <option value="40">震度4</option>
+            <option value="45">震度5弱</option>
+            <option value="50">震度5強</option>
+            <option value="55">震度6弱</option>
+            <option value="60">震度6強</option>
+            <option value="70">震度7</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- マグニチュード（下限〜上限デュアルスライダー） -->
+      <div class="filter-row" style="flex-direction: column; align-items: stretch; gap: 2px;">
+        <div style="display: flex; justify-content: space-between; font-size: 12px;">
+          <label>マグニチュード:</label>
+          <span id="magRangeLabel" style="font-weight: bold; color: #0066cc;">すべて</span>
+        </div>
+        <div class="dual-slider-wrap">
+          <div class="dual-slider-track"></div>
+          <div class="dual-slider-range" id="magRangeBar"></div>
+          <input type="range" id="minMag" min="0" max="8.0" step="0.1" value="0">
+          <input type="range" id="maxMag" min="0" max="8.0" step="0.1" value="8.0">
+        </div>
+      </div>
+
+      <!-- 震源の深さ（下限〜上限デュアルスライダー） -->
+      <div class="filter-row" style="flex-direction: column; align-items: stretch; gap: 2px;">
+        <div style="display: flex; justify-content: space-between; font-size: 12px;">
+          <label>震源の深さ:</label>
+          <span id="depthRangeLabel" style="font-weight: bold; color: #0066cc;">すべて</span>
+        </div>
+        <div class="dual-slider-wrap">
+          <div class="dual-slider-track"></div>
+          <div class="dual-slider-range" id="depthRangeBar"></div>
+          <input type="range" id="minDepth" min="0" max="17" step="1" value="0">
+          <input type="range" id="maxDepth" min="0" max="17" step="1" value="17">
+        </div>
+      </div>
+
+
+      <div class="filter-row">
+        <button class="btn-primary" id="reloadBtn">最新データに更新</button>
+      </div>
+      <div class="filter-row">
+        <button class="btn-secondary" id="loadMoreBtn">さらに過去を読み込む</button>
+      </div>
+      <div id="countDisplay">読み込み中...</div>
+      <div id="wsStatus" style="font-size: 11px; color: #28a745; text-align: right; margin-top: 4px; font-weight: bold;">● リアルタイム待機中</div>
+      <div style="margin-top: 6px; text-align: right;">
+        <button id="testAlertBtn" style="font-size: 10px; padding: 2px 6px; cursor: pointer; background: #eee; border: 1px solid #ccc; border-radius: 4px;">光る＆通知のテスト</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 凡例パネル（開閉可能） -->
+  <div class="legend-panel">
+    <div class="panel-header" id="toggleLegendHeader">
+      <span style="font-weight: bold; font-size: 12px;">凡例（規模・震度）</span>
+      <button class="toggle-btn" id="toggleLegendBtn" style="margin-left: 12px;">▲ 閉じる</button>
+    </div>
+    <div class="legend-body" id="legendBody">
+      <div class="legend-row" style="border-bottom: 1px solid #eee; padding-bottom: 6px;">
+        <span class="legend-label">規模(M)<br><small style="font-weight:normal; color:#666;">※相対表示</small></span>
+                <div class="mag-list">
+          <div class="mag-item"><span class="mag-circle" style="width:8px; height:8px;"></span>M1.0</div>
+          <div class="mag-item"><span class="mag-circle" style="width:12px; height:12px;"></span>M2.0</div>
+          <div class="mag-item"><span class="mag-circle" style="width:21px; height:21px;"></span>M3.0</div>
+          <div class="mag-item"><span class="mag-circle" style="width:32px; height:32px;"></span>M4.0</div>
+          <div class="mag-item"><span class="mag-circle" style="width:46px; height:46px;"></span>M5.0</div>
+          <div class="mag-item"><span class="mag-circle" style="width:62px; height:62px;"></span>M6.0</div>
+          <div class="mag-item"><span class="mag-circle" style="width:81px; height:81px;"></span>M7.0</div>
+        </div>
+
+      </div>
+
+            <!-- 最大震度モード時の凡例 -->
+      <div class="legend-row" id="legendIntensityRow">
+        <span class="legend-label">最大震度</span>
+        <div class="legend-item"><span class="legend-color" style="background:#00a0e9;"></span>震度1</div>
+        <div class="legend-item"><span class="legend-color" style="background:#00a843;"></span>震度2</div>
+        <div class="legend-item"><span class="legend-color" style="background:#0055ff;"></span>震度3</div>
+        <div class="legend-item"><span class="legend-color" style="background:#ffb700;"></span>震度4</div>
+        <div class="legend-item"><span class="legend-color" style="background:#ff6600;"></span>震度5弱</div>
+        <div class="legend-item"><span class="legend-color" style="background:#ff1e00;"></span>震度5強</div>
+        <div class="legend-item"><span class="legend-color" style="background:#c70039;"></span>震度6弱</div>
+        <div class="legend-item"><span class="legend-color" style="background:#8b0000;"></span>震度6強</div>
+        <div class="legend-item"><span class="legend-color" style="background:#800080;"></span>震度7</div>
+      </div>
+
+      <!-- 震源深さモード時の凡例（初期状態は非表示） -->
+      <div class="legend-row hidden" id="legendDepthRow">
+        <span class="legend-label">震源深さ</span>
+        <div class="legend-item"><span class="legend-color" style="background:#ff1e00;"></span>0〜10km</div>
+        <div class="legend-item"><span class="legend-color" style="background:#ff8800;"></span>20〜30km</div>
+        <div class="legend-item"><span class="legend-color" style="background:#ffd000;"></span>40〜60km</div>
+        <div class="legend-item"><span class="legend-color" style="background:#00b050;"></span>70〜100km</div>
+        <div class="legend-item"><span class="legend-color" style="background:#0070c0;"></span>150〜300km</div>
+        <div class="legend-item"><span class="legend-color" style="background:#7030a0;"></span>300km超</div>
+      </div>
+
+        
+        
+      
+       
+        
+        
+      </div>
+    </div>
+  </div>
+
+  <script src="leaflet-global.js"></script>
+  <script src="map.js"></script>
+</body>
+</html>
