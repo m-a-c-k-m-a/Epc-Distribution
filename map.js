@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // 2. 透明部分（海）だけに色別標高図を流し込む
         ctx.globalCompositeOperation = 'destination-over';
+         ctx.filter = 'contrast(180%) saturate(140%) brightness(100%)';
         if (reliefImg.complete && reliefImg.naturalWidth > 0) {
           ctx.drawImage(reliefImg, 0, 0);
         }
