@@ -468,7 +468,7 @@ function renderMarkers() {
     let displayLng = q.lng;
     if (count > 0) {
       const angle = count * 2.4;
-      const offset = 0.008 * Math.sqrt(count);
+      const offset = 0.001 * Math.sqrt(count);
       displayLat += Math.sin(angle) * offset;
       displayLng += Math.cos(angle) * offset;
     }
@@ -491,15 +491,17 @@ function renderMarkers() {
       ? `<div class="city-list"><strong>観測市町村:</strong><br>${q.cities.join('、')}</div>`
       : '<div class="city-list">観測市町村データなし</div>';
 
-    const content = `
+        const content = `
       <div class="info-box">
         <strong>${q.hypocenter}</strong><br>
         発生日時: ${q.time.replace('T', ' ').slice(0, 19)}<br>
+        震源座標: <b>北緯 ${q.lat.toFixed(2)}° / 東経 ${q.lng.toFixed(2)}°</b><br>
         マグニチュード: <b>M${q.magText}</b> / 深さ: <b>${q.depth}km</b><br>
         最大震度: <b>${q.maxInt}</b>
         ${citiesHtml}
       </div>
     `;
+
 
     marker.bindPopup(content);
     q.markerObj = marker;
