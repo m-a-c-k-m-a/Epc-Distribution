@@ -3,7 +3,7 @@ const scaleMap = {
   45: '5弱', 50: '5強', 55: '6弱', 60: '6強', 70: '7'
 };
 
-// 開く先のGitHub Pages URL（URL欠け防止のため分割連結）
+// 開く先のGitHub Pages URL（リポジトリ名 /Epc-Distribution/ まで含める）
 const TARGET_MAP_URL = 'https://' + 'm-a-c-k-m-a.' + 'github.' + 'io' + '/Epc-Distribution/';
 
 // 拡張機能のインストール・更新時に1分ごとの定期監視アラームをセット
