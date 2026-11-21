@@ -208,16 +208,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 4. テストボタンの動作
-  const testBtn = document.getElementById('testAlertBtn');
+   const testBtn = document.getElementById('testAlertBtn');
   if (testBtn) {
     testBtn.addEventListener('click', () => {
       if (allQuakesData.length > 0) {
-        const latestQuake = allQuakesData.at(0);
-        triggerNewQuakeAlert(latestQuake, true);
+        testBtn.textContent = '5秒後に通知が出ます（別タブへ移動可）...';
+        testBtn.disabled = true;
+        setTimeout(() => {
+          triggerNewQuakeAlert(allQuakesData.at(0), true);
+          testBtn.textContent = '光る＆通知のテスト';
+          testBtn.disabled = false;
+        }, 5000);
       }
     });
   }
-});
+
 
 // 1件の地震JSONデータを地図描画用オブジェクトに変換する共通関数
 function parseQuakeItem(item) {
@@ -580,12 +585,22 @@ function triggerNewQuakeAlert(quake, isTest = false) {
   const pulseMarker = new L.Marker([targetLat, targetLng], { icon: pulseIcon }).addTo(map);
   setTimeout(() => { map.removeLayer(pulseMarker); }, 15000);
 
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(titleText, {
-      body: `深さ: ${quake.depth}km / 発生: ${quake.time.replace('T', ' ').slice(0, 19)}`
+   if ('Notification' in window && Notification.permission === 'granted') {
+    const notif = new Notification(titleText, {
+      body: `深さ: ${quake.depth}km / 発生: ${quake.time.replace('T', ' ').slice(0, 19)}\n（クリックして地図へ移動）`,
+      icon: 'icon.png'
     });
+
+    notif.onclick = () => {
+      window.focus(); // 別のタブや別ソフトを見ていても、この地図画面を一番手前に呼び出す
+      map.setView([targetLat, targetLng], 9); // 震源へズーム移動
+      if (quake.markerObj) {
+        quake.markerObj.openPopup(); // 観測市町村のポップアップを自動で開く
+      }
+      notif.close();
+    };
   }
-}
+
 
 // 左側の地震リストを描画する関数
 function renderQuakeList(quakes) {
