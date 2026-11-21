@@ -222,7 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     });
   }
-
+});
 
 // 1件の地震JSONデータを地図描画用オブジェクトに変換する共通関数
 function parseQuakeItem(item) {
@@ -600,7 +600,7 @@ function triggerNewQuakeAlert(quake, isTest = false) {
       notif.close();
     };
   }
-
+}
 
 // 左側の地震リストを描画する関数
 function renderQuakeList(quakes) {
